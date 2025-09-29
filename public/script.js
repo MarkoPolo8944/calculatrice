@@ -428,58 +428,81 @@ Un tableau unique au format suivant :
     
     async callPerplexityAPI(prompt) {
     console.log('📡 Appel API Perplexity via serveur...');
+    console.log('📋 Prompt reçu (type):', typeof prompt);
+    console.log('📋 Prompt reçu (longueur):', prompt?.length || 'undefined');
+    console.log('📋 Prompt préview:', prompt?.substring(0, 100) || 'VIDE');
     
+    // Validation du prompt
+    if (!prompt || typeof prompt !== 'string' || prompt.trim() === '') {
+        console.error('❌ Prompt invalide:', { prompt, type: typeof prompt });
+        throw new Error('Prompt requis et non vide');
+    }
+
     try {
+        const payload = {
+            model: 'sonar-deep-research',
+            messages: [
+                {
+                    role: 'system',
+                    content: 'Tu es un expert en immobilier français. Réponds uniquement avec des tableaux markdown précis et des données réelles du marché 2025.'
+                },
+                {
+                    role: 'user',
+                    content: prompt.trim()
+                }
+            ],
+            temperature: 0.7,
+            max_tokens: 8000
+        };
+
+        console.log('📤 Payload complet à envoyer:', JSON.stringify(payload, null, 2));
+
         const response = await fetch('/api/perplexity', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                model: 'llama-3.1-sonar-large-128k-online',
-                messages: [
-                    {
-                        role: 'system',
-                        content: 'Tu es un expert en immobilier français. Réponds uniquement avec des tableaux markdown précis et des données réelles du marché 2025.'
-                    },
-                    {
-                        role: 'user',
-                        content: prompt
-                    }
-                ],
-                temperature: 0.3,
-                max_tokens: 4000,
-                top_p: 1,
-                stream: false
-            })
+            body: JSON.stringify(payload)
         });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            console.error('❌ Erreur serveur:', errorData);
-            
-            // Utiliser le fallback si disponible
-            if (errorData.fallback && errorData.content) {
-                console.log('⚠️ Utilisation du mode fallback');
-                return errorData.content;
-            }
-            
-            throw new Error(errorData.error || `Erreur serveur: ${response.status}`);
-        }
-
-        const data = await response.json();
+        console.log('📨 Statut HTTP serveur:', response.status);
+        console.log('📨 Headers réponse:', [...response.headers.entries()]);
         
-        if (!data.success) {
-            console.warn('⚠️ API en mode fallback:', data.error);
-            return data.content || 'Données indisponibles';
+        // Vérifier si la réponse est du JSON valide
+        const textResponse = await response.text();
+        console.log('📨 Réponse brute serveur:', textResponse);
+        
+        let data;
+        try {
+            data = JSON.parse(textResponse);
+        } catch (parseError) {
+            console.error('❌ Erreur parsing JSON:', parseError);
+            throw new Error(`Réponse serveur non-JSON: ${textResponse.substring(0, 200)}`);
+        }
+        
+        console.log('📋 Données parsées:', data);
+        
+        // Gestion des réponses
+        if (data.fallback || !data.success) {
+            console.warn('⚠️ Mode fallback activé:', data.error);
+            return data.content || 'Données indisponibles temporairement';
+        }
+        
+        if (!data.content) {
+            console.error('❌ Pas de contenu dans la réponse:', data);
+            throw new Error('Réponse serveur sans contenu');
         }
 
-        console.log('✅ Réponse API reçue via serveur');
+        console.log('✅ Contenu reçu (longueur):', data.content.length);
         return data.content;
         
     } catch (error) {
-        console.error('❌ Erreur lors de l\'appel serveur:', error);
-        throw new Error('Serveur indisponible - ' + error.message);
+        console.error('❌ Erreur complète:', {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+        });
+        throw new Error(`Erreur API: ${error.message}`);
     }
 }
 
