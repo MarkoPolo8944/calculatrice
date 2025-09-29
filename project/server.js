@@ -24,39 +24,88 @@ app.get('/', (req, res) => {
     res.sendFile(__dirname + '/public/index.html');
 });
 
-// Route API Perplexity - VERSION CORRIGÉE
 app.post('/api/perplexity', async (req, res) => {
-    console.log('📡 Route /api/perplexity appelée');
-    console.log('📦 Body reçu:', JSON.stringify(req.body, null, 2));
+    const startTime = Date.now();
+    console.log(`📡 [${new Date().toISOString()}] Route appelée`);
     
     try {
-        const { model, messages, temperature, max_tokens } = req.body;
+        const { messages } = req.body;
         
-        // Validation du payload
-        if (!messages || !Array.isArray(messages) || messages.length === 0) {
-            console.error('❌ Messages manquants ou invalides');
-            return res.json({
+        if (!messages || !Array.isArray(messages) || messages.length < 2) {
+            console.log('❌ Messages invalides:', messages);
+            return res.status(400).json({
                 success: false,
-                fallback: true,
-                error: 'Messages requis dans le format messages[]',
-                content: getFallbackContent('')
+                error: 'Messages array requis avec au moins 2 éléments'
             });
         }
 
-        // Extraire le prompt du message utilisateur
-        const userMessage = messages.find(msg => msg.role === 'user');
-        if (!userMessage || !userMessage.content || userMessage.content.trim() === '') {
-            console.error('❌ Contenu utilisateur manquant');
-            return res.json({
+        const userMessage = messages.find(m => m.role === 'user');
+        if (!userMessage || !userMessage.content) {
+            console.log('❌ Message utilisateur manquant');
+            return res.status(400).json({
                 success: false,
-                fallback: true,
-                error: 'Contenu utilisateur requis',
-                content: getFallbackContent('')
+                error: 'Message utilisateur requis'
             });
         }
 
-        const prompt = userMessage.content.trim();
-        console.log('✅ Prompt extrait (100 chars):', prompt.substring(0, 100) + '...');
+        console.log('📝 Prompt longueur:', userMessage.content.length);
+        
+        // Appel API Perplexity avec retry
+        let retryCount = 0;
+        let lastError;
+        
+        while (retryCount < 3) {
+            try {
+                const response = await fetch('https://api.perplexity.ai/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: 'sonar-pro',
+                        messages: messages,
+                        temperature: 0.7,
+                        max_tokens: 4000
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const duration = Date.now() - startTime;
+                
+                console.log(`✅ Succès en ${duration}ms`);
+                return res.json({
+                    success: true,
+                    content: data.choices[0].message.content
+                });
+
+            } catch (error) {
+                retryCount++;
+                lastError = error;
+                console.log(`⚠️ Tentative ${retryCount}/3 échouée:`, error.message);
+                
+                if (retryCount < 3) {
+                    await new Promise(resolve => setTimeout(resolve, 1000)); // Attente 1s
+                }
+            }
+        }
+
+        throw lastError;
+
+    } catch (error) {
+        const duration = Date.now() - startTime;
+        console.error(`❌ Erreur finale après ${duration}ms:`, error);
+        
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
 
         // Mode fallback direct si API non configurée
         if (!PERPLEXITY_API_KEY || PERPLEXITY_API_KEY.length < 20) {
@@ -191,3 +240,4 @@ app.listen(PORT, () => {
 });
 
 "Fix: Correction route API Perplexity"
+
