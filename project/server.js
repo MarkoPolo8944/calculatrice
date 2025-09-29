@@ -24,149 +24,137 @@ app.get('/', (req, res) => {
     res.sendFile(__dirname + '/public/index.html');
 });
 
-// Route API Perplexity - basée sur votre exemple fonctionnel
+// Route API Perplexity
 app.post('/api/perplexity', async (req, res) => {
-    console.log('📡 Nouvelle requête API Perplexity reçue');
-    console.log('📋 Body reçu:', JSON.stringify(req.body, null, 2));
+    console.log('📡 Route /api/perplexity appelée');
+    console.log('📦 Body reçu:', JSON.stringify(req.body, null, 2));
     
     try {
-        const { 
-            model = 'sonar-deep-research',
-            messages,
-            temperature = 0.7,
-            max_tokens = 8000
-        } = req.body;
+        const { model, messages, temperature, max_tokens } = req.body;
         
-        // Validation stricte
+        // Validation du payload
         if (!messages || !Array.isArray(messages) || messages.length === 0) {
-            console.error('❌ Messages invalides:', { messages, type: typeof messages });
-            return res.status(200).json({ 
+            console.error('❌ Messages manquants ou invalides');
+            return res.status(400).json({
                 success: false,
-                error: 'Messages requis (array)',
-                fallback: true,
-                content: generateFallbackContent(messages)
+                error: 'Messages requis dans le format [{role: "user", content: "..."}]'
             });
         }
 
-        console.log('📤 Envoi vers Perplexity API...');
-        console.log('🔑 API Key:', PERPLEXITY_API_KEY.substring(0, 10) + '...');
-        
-        // Payload exactement comme votre exemple fonctionnel
-        const payload = {
-            model,
-            messages,
-            temperature,
-            max_tokens
-        };
+        // Extraire le prompt du message utilisateur
+        const userMessage = messages.find(msg => msg.role === 'user');
+        if (!userMessage || !userMessage.content || userMessage.content.trim() === '') {
+            console.error('❌ Contenu utilisateur manquant');
+            return res.status(400).json({
+                success: false,
+                error: 'Contenu utilisateur requis dans messages'
+            });
+        }
 
-        const headers = {
-            "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
-            "Content-Type": "application/json"
-        };
+        const prompt = userMessage.content.trim();
+        console.log('✅ Prompt extrait:', prompt.substring(0, 100) + '...');
 
-        console.log('📦 Payload Perplexity:', JSON.stringify(payload, null, 2));
+        // Vérification clé API
+        if (!PERPLEXITY_API_KEY || PERPLEXITY_API_KEY === 'your_key_here') {
+            console.warn('⚠️ Clé API manquante, mode fallback');
+            return res.json({
+                success: false,
+                fallback: true,
+                error: 'Clé API non configurée',
+                content: getFallbackContent(prompt)
+            });
+        }
 
+        // Appel API Perplexity
+        console.log('🚀 Appel API Perplexity...');
         const response = await fetch(PERPLEXITY_API_URL, {
             method: 'POST',
-            headers,
-            body: JSON.stringify(payload)
+            headers: {
+                'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: model || 'sonar-deep-research',
+                messages: messages,
+                temperature: temperature || 0.7,
+                max_tokens: max_tokens || 8000
+            })
         });
 
-        console.log('📨 Statut réponse Perplexity:', response.status);
-
         if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ Erreur Perplexity:', response.status, errorText);
-            
-            return res.status(200).json({
-                success: false,
-                error: `API Perplexity: ${response.status} - ${errorText}`,
-                fallback: true,
-                content: generateFallbackContent(messages)
-            });
+            throw new Error(`API Perplexity error: ${response.status}`);
         }
 
         const data = await response.json();
-        console.log('✅ Réponse Perplexity:', {
-            hasChoices: !!data.choices,
-            choicesLength: data.choices?.length || 0,
-            hasContent: !!data.choices?.[0]?.message?.content
-        });
+        console.log('✅ Réponse API reçue');
 
-        if (!data.choices || !data.choices[0]?.message?.content) {
-            console.error('❌ Format réponse invalide:', data);
-            return res.status(200).json({
-                success: false,
-                error: 'Format réponse API invalide',
-                fallback: true,
-                content: generateFallbackContent(messages)
-            });
+        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+            throw new Error('Réponse API invalide');
         }
 
-        // Succès - retour comme votre exemple
         res.json({
             success: true,
             content: data.choices[0].message.content,
-            usage: data.usage || null
+            usage: data.usage
         });
-        
+
     } catch (error) {
-        console.error('❌ Erreur serveur:', error.message);
-        console.error('❌ Stack:', error.stack);
+        console.error('❌ Erreur API Perplexity:', error.message);
         
-        // Fallback en cas d'erreur
-        res.status(200).json({
+        // Mode fallback en cas d'erreur
+        const userMessage = req.body.messages?.find(msg => msg.role === 'user');
+        const prompt = userMessage?.content || '';
+        
+        res.json({
             success: false,
-            error: `Erreur serveur: ${error.message}`,
             fallback: true,
-            content: generateFallbackContent(req.body?.messages)
+            error: error.message,
+            content: getFallbackContent(prompt)
         });
     }
 });
 
 // Fonction fallback améliorée
-function generateFallbackContent(messages = []) {
-    console.log('🔄 Génération contenu fallback...');
+function getFallbackContent(prompt) {
+    console.log('🎭 Génération contenu fallback pour:', prompt.substring(0, 50) + '...');
     
-    const userMessage = messages.find(m => m.role === 'user')?.content || '';
-    
-    if (userMessage.includes('recherche d\'annonces') || userMessage.includes('Étape 1')) {
-        return `| Niveau budget | Localisation | Type | Surface | Prix affiché (€) | Lien annonce | Loyer estimé 2025 (€/mois) | Rendement brut estimé (%) |
-|---|---|---|---|---|---|---|---|
-| Budget serré | Quartier émergent | T2 rénové | 42m² | 185 000 | [Voir sur SeLoger](https://seloger.com) | 1 200 | 7,8% |
-| Budget moyen | Quartier résidentiel | T2 moderne | 45m² | 220 000 | [Voir sur LeBonCoin](https://leboncoin.fr) | 1 350 | 7,4% |
-| Budget confortable | Centre-ville | T2 standing | 48m² | 265 000 | [Voir sur PAP](https://pap.fr) | 1 500 | 6,8% |
+    if (prompt.includes('chasseur immobilier') && prompt.includes('tableaux comparatifs')) {
+        return `| Niveau budget | Localisation (secteur) | Type | Surface | Prix affiché (€) | Lien annonce | Loyer estimé 2025 (€/mois) | Rendement brut (%) |
+|---------------|------------------------|------|---------|------------------|--------------|----------------------------|-------------------|
+| 🥉 Bas | Nantes Centre-ville | T2 | 42m² | 285 000€ | [Voir annonce](#) | 1 100-1 250 | 4.6-5.3% |
+| 🥈 Médian | Nantes Beaulieu | T2 | 46m² | 345 000€ | [Voir annonce](#) | 1 300-1 450 | 4.5-5.0% |
+| 🥇 Haut | Nantes Île de Nantes | T2 | 52m² | 405 000€ | [Voir annonce](#) | 1 500-1 650 | 4.4-4.9% |
 
-*Données de démonstration - API temporairement indisponible*`;
+*Mode hors ligne - Reconnectez-vous pour données temps réel*`;
     }
     
-    if (userMessage.includes('quartiers') || userMessage.includes('Étape 2')) {
-        return `| Quartier | Prix moyen (€/m²) | Potentiel évolution | Transport | Commodités | Recommandation |
-|---|---|---|---|---|---|
-| Centre Historique | 4 200 | +15% sur 3 ans | Métro + Bus | ⭐⭐⭐⭐ | Excellent pour investissement |
-| Quartier Résidentiel | 3 800 | +8% sur 3 ans | Bus + Tram | ⭐⭐⭐ | Bon rapport qualité/prix |
-| Zone d'Affaires | 5 100 | +5% sur 3 ans | Métro direct | ⭐⭐⭐⭐⭐ | Premium mais rentable |
+    if (prompt.includes('quartiers') && prompt.includes('investissement immobilier')) {
+        return `| Quartier | Prix d'achat (€) | Loyer estimé mensuel (€) | Rendement brut (%) | Pertinence (patrimoine) |
+|----------|------------------|--------------------------|--------------------|-----------------------|
+| Centre-ville | 280 000-320 000 | 1 200-1 400 | 4.5-6.0% | ⭐⭐⭐⭐⭐ |
+| Beaulieu | 320 000-380 000 | 1 300-1 500 | 4.0-5.6% | ⭐⭐⭐⭐ |
+| Île de Nantes | 380 000-420 000 | 1 400-1 600 | 4.0-5.0% | ⭐⭐⭐⭐⭐ |
+| Hauts-Pavés | 250 000-300 000 | 1 000-1 300 | 4.8-6.2% | ⭐⭐⭐ |
 
-*Analyse basée sur données locales - API en maintenance*`;
+*Mode hors ligne - Reconnectez-vous pour analyse complète*`;
     }
     
-    if (userMessage.includes('meilleures') || userMessage.includes('Étape 3')) {
-        return `| Niveau | Adresse | Prix | Surface | Loyer estimé | Rendement | Lien |
-|---|---|---|---|---|---|---|
-| 🥉 Bronze | Rue de la Paix | 195 000€ | 41m² | 1 150€ | 7,1% | [Détails](#) |
-| 🥈 Argent | Avenue des Fleurs | 235 000€ | 46m² | 1 400€ | 7,2% | [Détails](#) |
-| 🥇 Or | Boulevard Central | 275 000€ | 50m² | 1 650€ | 7,3% | [Détails](#) |
+    if (prompt.includes('3 meilleures annonces')) {
+        return `| Niveau budget | Localisation | Type | Surface | Prix affiché (€) | Loyer estimé 2025 (€) | Rendement brut (%) | Lien annonce |
+|---------------|--------------|------|---------|------------------|----------------------|--------------------|--------------| 
+| 🥉 Bas | Nantes Malakoff | T2 | 41m² | 285 000€ | 1 150-1 300 | 4.8-5.5% | [Détails](#) |
+| 🥈 Médian | Nantes Procé | T2 | 48m² | 345 000€ | 1 350-1 500 | 4.7-5.2% | [Détails](#) |
+| 🥇 Haut | Nantes Erdre | T2 | 53m² | 405 000€ | 1 550-1 700 | 4.6-5.0% | [Détails](#) |
 
-*Sélection basée sur critères locaux - Reconnectez-vous pour données temps réel*`;
+*Sélection mode hors ligne - Reconnectez-vous pour annonces temps réel*`;
     }
     
     return `| Information | Valeur |
 |-------------|---------|
 | Statut | Mode hors ligne activé |
-| Source | Base de données locale |
 | Recommandation | Reconnectez-vous pour analyse IA complète |
 
-**✅ Calculs effectués avec succès en mode local**`;
+**✅ Calculs effectués en mode local**`;
 }
 
 // Health check
@@ -184,4 +172,5 @@ app.listen(PORT, () => {
     console.log(`📱 URL: http://localhost:${PORT}`);
     console.log(`🌐 Production: https://calculatrice-5pp8.onrender.com`);
 });
+
 
