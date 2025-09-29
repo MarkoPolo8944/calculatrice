@@ -252,82 +252,40 @@ class CalculatriceImmobiliere {
         resultsContainer.scrollIntoView({ behavior: 'smooth' });
     }
     
-    async getBenchmarkSequential() {
-        const loading = document.getElementById('loading');
-        const benchmarkResults = document.getElementById('benchmarkResults');
-        const benchmarkContent = document.getElementById('benchmarkContent');
+    async getBenchmarkSequential(prompt1, prompt2, prompt3) {
+    console.log('🔄 Démarrage analyse séquentielle...');
+    
+    try {
+        // ÉTAPE 1 - Attendre complètement
+        console.log('🔍 Appel API Étape 1...');
+        const result1 = await this.callPerplexityAPI(prompt1);
+        console.log('✅ Étape 1 terminée, attente 2 secondes...');
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Pause obligatoire
         
-        loading.style.display = 'flex';
+        // ÉTAPE 2 - Attendre complètement  
+        console.log('🏘️ Appel API Étape 2...');
+        const result2 = await this.callPerplexityAPI(prompt2);
+        console.log('✅ Étape 2 terminée, attente 2 secondes...');
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Pause obligatoire
         
-        try {
-            benchmarkContent.innerHTML = `
-                <div class="benchmark-intro">
-                    <h4>💡 Budget Net Vendeur Maximum: ${this.formatPrice(this.currentResults.budgetNetVendeur)}</h4>
-                    <p>Budget total: ${this.formatPrice(this.currentData.budgetClient)} - Ville: ${this.currentData.ville} - Type: ${this.currentData.typologie} - Objectif: ${this.currentData.projet}</p>
-                </div>
-                <div id="analysisResults" class="analysis-container">
-                    <div class="analysis-step">
-                        <h4>🔍 Étape 1 : Recherche d'annonces correspondantes...</h4>
-                        <div id="step1Result" class="step-result loading-step">En cours...</div>
-                    </div>
-                </div>
-            `;
-            
-            benchmarkResults.style.display = 'block';
-            benchmarkResults.scrollIntoView({ behavior: 'smooth' });
-            
-            // Étape 1 : Recherche d'annonces
-            console.log('🔍 Appel API Étape 1...');
-            const prompt1 = this.createPrompt1();
-            const result1 = await this.callPerplexityAPI(prompt1);
-            document.getElementById('step1Result').innerHTML = this.formatBenchmarkResponse(result1);
-            document.getElementById('step1Result').classList.remove('loading-step');
-            
-            // Ajouter étape 2
-            document.getElementById('analysisResults').innerHTML += `
-                <div class="analysis-step">
-                    <h4>🏘️ Étape 2 : Analyse des quartiers...</h4>
-                    <div id="step2Result" class="step-result loading-step">En cours...</div>
-                </div>
-            `;
-            
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Pause entre appels
-            
-            console.log('🏘️ Appel API Étape 2...');
-            const prompt2 = this.createPrompt2();
-            const result2 = await this.callPerplexityAPI(prompt2);
-            document.getElementById('step2Result').innerHTML = this.formatBenchmarkResponse(result2);
-            document.getElementById('step2Result').classList.remove('loading-step');
-            
-            // Ajouter étape 3
-            document.getElementById('analysisResults').innerHTML += `
-                <div class="analysis-step">
-                    <h4>🎯 Étape 3 : Top 3 des meilleures opportunités...</h4>
-                    <div id="step3Result" class="step-result loading-step">En cours...</div>
-                </div>
-            `;
-            
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Pause entre appels
-            
-            console.log('🎯 Appel API Étape 3...');
-            const prompt3 = this.createPrompt3();
-            const result3 = await this.callPerplexityAPI(prompt3);
-            document.getElementById('step3Result').innerHTML = this.formatBenchmarkResponse(result3);
-            document.getElementById('step3Result').classList.remove('loading-step');
-            
-            console.log('✅ Toutes les étapes terminées avec succès');
-            
-        } catch (error) {
-            console.error('❌ Erreur lors de l\'analyse:', error);
-            benchmarkContent.innerHTML = `
-                <div class="error-message">
-                    <h4>❌ Erreur lors de l'analyse marché</h4>
-                    <p>Impossible de récupérer les données du marché en temps réel. Veuillez réessayer.</p>
-                    <p><strong>Détail:</strong> ${error.message}</p>
-                </div>
-            `;
-            benchmarkResults.style.display = 'block';
-        }
+        // ÉTAPE 3 - Attendre complètement
+        console.log('🎯 Appel API Étape 3...');
+        const result3 = await this.callPerplexityAPI(prompt3);
+        console.log('✅ Étape 3 terminée');
+        
+        console.log('✅ Toutes les étapes terminées avec succès');
+        return {
+            benchmark: result1,
+            analyse: result2,
+            selection: result3
+        };
+        
+    } catch (error) {
+        console.error('❌ Erreur lors de l\'analyse:', error);
+        throw error;
+    }
+}
+
         
         loading.style.display = 'none';
     }
@@ -553,3 +511,4 @@ Un tableau unique au format suivant :
 document.addEventListener('DOMContentLoaded', () => {
     new CalculatriceImmobiliere();
 });
+
