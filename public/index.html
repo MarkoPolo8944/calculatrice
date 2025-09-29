@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculatrice Immobilière IA</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>🏠 Calculatrice Immobilière Intelligente</h1>
+        
+        <form id="calculatorForm" class="calculator-form">
+            <div class="form-group">
+                <label for="budgetClient">💰 Budget Client (€)</label>
+                <input type="number" id="budgetClient" required min="0" step="1000">
+            </div>
+
+            <div class="form-group">
+                <label for="budgetTravaux">🔨 Budget Travaux (€)</label>
+                <input type="number" id="budgetTravaux" min="0" step="1000" value="0">
+            </div>
+
+            <div class="form-group">
+                <label for="projet">🎯 Objectif du Projet</label>
+                <select id="projet" required>
+                    <option value="">Sélectionner...</option>
+                    <option value="patrimoine">Patrimoine</option>
+                    <option value="rentabilite">Rentabilité</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="typeBien">🏢 Type de Bien</label>
+                <select id="typeBien" required>
+                    <option value="">Sélectionner...</option>
+                    <option value="ancien">Ancien</option>
+                    <option value="neuf">Neuf</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="ville">📍 Ville</label>
+                <input type="text" id="ville" required placeholder="Ex: Paris, Lyon, Marseille...">
+            </div>
+
+            <div class="form-group">
+                <label for="typologie">🏠 Typologie</label>
+                <select id="typologie" required>
+                    <option value="">Sélectionner...</option>
+                    <option value="T1">Studio/T1</option>
+                    <option value="T2">T2</option>
+                    <option value="T3">T3</option>
+                    <option value="T4">T4</option>
+                    <option value="T5">T5</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="typeRenovation">🔧 Type de Travaux</label>
+                <select id="typeRenovation" required>
+                    <option value="">Sélectionner...</option>
+                    <option value="rafraichissement">Rafraîchissement (400€/m²)</option>
+                    <option value="lourde">Rénovation lourde (1000€/m²)</option>
+                </select>
+            </div>
+
+            <button type="submit" class="btn-calculate">Calculer</button>
+        </form>
+
+        <div id="results" class="results-container" style="display: none;">
+            <h2>📊 Résultats de l'Analyse</h2>
+            <div id="calculationResults" class="calculation-grid"></div>
+            
+            <button id="benchmarkBtn" class="btn-benchmark" style="display: none;">
+                🔍 Obtenir Benchmark Marché avec IA
+            </button>
+            
+            <div id="benchmarkResults" class="benchmark-container" style="display: none;">
+                <h3>🎯 Analyse Marché en Temps Réel</h3>
+                <div id="benchmarkContent"></div>
+            </div>
+        </div>
+
+        <div id="loading" class="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>Analyse du marché en cours...</p>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
