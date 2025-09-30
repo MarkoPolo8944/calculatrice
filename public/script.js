@@ -252,40 +252,38 @@ class CalculatriceImmobiliere {
         resultsContainer.scrollIntoView({ behavior: 'smooth' });
     }
     
-    async getBenchmarkSequential(prompt1, prompt2, prompt3) {
-    console.log('🔄 Démarrage analyse séquentielle...');
-    
-    try {
-        // ÉTAPE 1 - Attendre complètement
-        console.log('🔍 Appel API Étape 1...');
-        const result1 = await this.callPerplexityAPI(prompt1);
-        console.log('✅ Étape 1 terminée, attente 2 secondes...');
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Pause obligatoire
+     async getBenchmarkSequential(prompt1, prompt2, prompt3) {
+        console.log('🔄 Démarrage analyse séquentielle...');
         
-        // ÉTAPE 2 - Attendre complètement  
-        console.log('🏘️ Appel API Étape 2...');
-        const result2 = await this.callPerplexityAPI(prompt2);
-        console.log('✅ Étape 2 terminée, attente 2 secondes...');
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Pause obligatoire
-        
-        // ÉTAPE 3 - Attendre complètement
-        console.log('🎯 Appel API Étape 3...');
-        const result3 = await this.callPerplexityAPI(prompt3);
-        console.log('✅ Étape 3 terminée');
-        
-        console.log('✅ Toutes les étapes terminées avec succès');
-        return {
-            benchmark: result1,
-            analyse: result2,
-            selection: result3
-        };
-        
-    } catch (error) {
-        console.error('❌ Erreur lors de l\'analyse:', error);
-        throw error;
+        try {
+            // ÉTAPE 1
+            console.log('🔍 Appel API Étape 1...');
+            const result1 = await this.callPerplexityAPI(prompt1);
+            console.log('✅ Étape 1 terminée, attente 2 secondes...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // ÉTAPE 2
+            console.log('🏘️ Appel API Étape 2...');
+            const result2 = await this.callPerplexityAPI(prompt2);
+            console.log('✅ Étape 2 terminée, attente 2 secondes...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // ÉTAPE 3
+            console.log('🎯 Appel API Étape 3...');
+            const result3 = await this.callPerplexityAPI(prompt3);
+            console.log('✅ Étape 3 terminée');
+            
+            console.log('✅ Toutes les étapes terminées avec succès');
+            return {
+                benchmark: result1,
+                analyse: result2,
+                selection: result3
+            };
+        } catch (error) {
+            console.error('❌ Erreur lors de l\'analyse:', error);
+            throw error;
+        }
     }
-}
-
         
         loading.style.display = 'none';
     }
@@ -511,4 +509,5 @@ Un tableau unique au format suivant :
 document.addEventListener('DOMContentLoaded', () => {
     new CalculatriceImmobiliere();
 });
+
 
