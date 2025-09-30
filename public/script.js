@@ -16,385 +16,167 @@ class CalculatriceImmobiliere {
         
         this.tauxNotaire = {
             'ancien': 0.075,
-            'neuf': 0.025
+            'neuf': 0.03
         };
         
-        this.tauxHonoraires = 0.084;
-        
-        // Frais d'agence immobilière
-        this.fraisAgence = {
-            'bas': 0.04,
-            'haut': 0.10
-        };
-        
-        // Configuration API Perplexity
-        this.API_KEY = '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'; // Remplacez par votre clé API
-        this.API_URL = 'https://api.perplexity.ai/chat/completions';
-        
-        // Base de données prix marché (backup si API échoue)
-        this.prixMarche = {
-            'Paris': { min: 8000, max: 15000 },
-            'Lyon': { min: 4500, max: 7000 },
-            'Marseille': { min: 3000, max: 5500 },
-            'Toulouse': { min: 3500, max: 5800 },
-            'Nice': { min: 4800, max: 8500 },
-            'Nantes': { min: 3800, max: 6000 },
-            'Bordeaux': { min: 4200, max: 6800 },
-            'Lille': { min: 2800, max: 4500 },
-            'Montpellier': { min: 3200, max: 5200 }
-        };
-        
-        this.loyersMarche = {
-            'Paris': { min: 30, max: 45 },
-            'Lyon': { min: 14, max: 20 },
-            'Marseille': { min: 12, max: 18 },
-            'Toulouse': { min: 13, max: 19 },
-            'Nice': { min: 16, max: 24 },
-            'Nantes': { min: 12, max: 18 },
-            'Bordeaux': { min: 13, max: 19 },
-            'Lille': { min: 11, max: 16 },
-            'Montpellier': { min: 12, max: 17 }
-        };
-        
-        this.initEventListeners();
+        this.init();
     }
     
-    initEventListeners() {
-        const form = document.getElementById('calculatorForm');
-        const benchmarkBtn = document.getElementById('benchmarkBtn');
+    init() {
+        console.log('🚀 Initialisation calculatrice...');
         
-        form.addEventListener('submit', (e) => this.handleCalculation(e));
-        benchmarkBtn.addEventListener('click', () => this.getBenchmarkSequential());
+        const form = document.getElementById('calculForm');
+        if (form) {
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.analyser();
+            });
+        }
+        
+        console.log('✅ Calculatrice initialisée');
     }
     
-    handleCalculation(e) {
-        e.preventDefault();
-        
-        const data = {
-            budgetClient: parseInt(document.getElementById('budgetClient').value),
-            budgetTravaux: parseInt(document.getElementById('budgetTravaux').value) || 0,
-            projet: document.getElementById('projet').value,
-            typeBien: document.getElementById('typeBien').value,
-            ville: document.getElementById('ville').value,
-            typologie: document.getElementById('typologie').value,
-            typeRenovation: document.getElementById('typeRenovation').value
-        };
-        
-        const results = this.calculate(data);
-        this.displayResults(results, data);
-    }
-    
-    calculate(data) {
-        const surface = this.surfaces[data.typologie];
-        const ville = this.findClosestCity(data.ville);
-        
-        // Prix d'achat marché
-        const prixMin = (this.prixMarche[ville]?.min || 3000) * surface;
-        const prixMax = (this.prixMarche[ville]?.max || 6000) * surface;
-        
-        // Calculs pour fourchette basse
-        const calculsBas = this.calculateForPrice(prixMin, data, surface);
-        
-        // Calculs pour fourchette haute  
-        const calculsHaut = this.calculateForPrice(prixMax, data, surface);
-        
-        // Loyers estimés
-        const loyerMin = (this.loyersMarche[ville]?.min || 12) * surface;
-        const loyerMax = (this.loyersMarche[ville]?.max || 18) * surface;
-        
-        return {
-            prixAchat: { min: prixMin, max: prixMax },
-            fraisNotaire: { min: calculsBas.fraisNotaire, max: calculsHaut.fraisNotaire },
-            honorairesAgence: { min: calculsBas.honorairesAgence, max: calculsHaut.honorairesAgence },
-            fraisAgenceImmo: { min: calculsBas.fraisAgenceImmo, max: calculsHaut.fraisAgenceImmo },
-            travaux: calculsBas.travaux,
-            coutHT: { min: calculsBas.coutHT, max: calculsHaut.coutHT },
-            coutTTC: { min: calculsBas.coutTTC, max: calculsHaut.coutTTC },
-            loyerMensuel: { min: loyerMin, max: loyerMax },
-            rentabiliteHT: { 
-                min: this.calculateRentability(loyerMin, calculsHaut.coutHT), 
-                max: this.calculateRentability(loyerMax, calculsBas.coutHT) 
-            },
-            rentabiliteTTC: { 
-                min: this.calculateRentability(loyerMin, calculsHaut.coutTTC), 
-                max: this.calculateRentability(loyerMax, calculsBas.coutTTC) 
-            },
-            surface: surface,
-            ville: ville,
-            budgetNetVendeur: this.calculateBudgetNetVendeur(data.budgetClient, data.typeBien)
-        };
-    }
-    
-    calculateForPrice(prix, data, surface) {
-        const fraisNotaire = prix * this.tauxNotaire[data.typeBien];
-        const honorairesAgence = prix * this.tauxHonoraires;
-        const fraisAgenceImmoMin = prix * this.fraisAgence.bas;
-        const fraisAgenceImmoMax = prix * this.fraisAgence.haut;
-        const fraisAgenceImmo = { min: fraisAgenceImmoMin, max: fraisAgenceImmoMax };
-        const travaux = surface * this.coutTravaux[data.typeRenovation];
-        
-        const coutHTMin = prix + fraisNotaire + honorairesAgence + fraisAgenceImmoMin;
-        const coutHTMax = prix + fraisNotaire + honorairesAgence + fraisAgenceImmoMax;
-        const coutHT = prix + fraisNotaire + honorairesAgence + ((fraisAgenceImmoMin + fraisAgenceImmoMax) / 2);
-        
-        const coutTTC = coutHT + travaux;
-        
-        return { 
-            fraisNotaire, 
-            honorairesAgence, 
-            fraisAgenceImmo, 
-            travaux, 
-            coutHT, 
-            coutTTC 
-        };
-    }
-    
-    calculateRentability(loyerMensuel, coutTotal) {
-        return ((loyerMensuel * 12) / coutTotal * 100);
-    }
-    
-    calculateBudgetNetVendeur(budgetClient, typeBien) {
-        const tauxNotaire = this.tauxNotaire[typeBien];
-        const tauxFraisAgenceMoyen = (this.fraisAgence.bas + this.fraisAgence.haut) / 2;
-        const tauxTotal = 1 + tauxNotaire + this.tauxHonoraires + tauxFraisAgenceMoyen;
-        return budgetClient / tauxTotal;
-    }
-    
-    findClosestCity(ville) {
-        const villeKey = Object.keys(this.prixMarche).find(key => 
-            key.toLowerCase().includes(ville.toLowerCase()) || 
-            ville.toLowerCase().includes(key.toLowerCase())
-        );
-        return villeKey || 'Lyon'; // Valeur par défaut
-    }
-    
-    displayResults(results, data) {
-        const resultsContainer = document.getElementById('results');
-        const calculationResults = document.getElementById('calculationResults');
-        const benchmarkBtn = document.getElementById('benchmarkBtn');
-        
-        calculationResults.innerHTML = `
-            <div class="result-card">
-                <h3>🏠 Prix d'achat</h3>
-                <div class="result-value">${this.formatPrice(results.prixAchat.min)} - ${this.formatPrice(results.prixAchat.max)}</div>
-                <div class="result-range">Fourchette marché ${results.ville}</div>
-            </div>
-            
-            <div class="result-card">
-                <h3>📋 Frais de notaire</h3>
-                <div class="result-value">${this.formatPrice(results.fraisNotaire.min)} - ${this.formatPrice(results.fraisNotaire.max)}</div>
-                <div class="result-range">${data.typeBien === 'ancien' ? '7,5%' : '2,5%'} du prix d'achat</div>
-            </div>
-            
-            <div class="result-card">
-                <h3>🤝 Honoraires d'agence</h3>
-                <div class="result-value">${this.formatPrice(results.honorairesAgence.min)} - ${this.formatPrice(results.honorairesAgence.max)}</div>
-                <div class="result-range">8,4% du prix d'achat</div>
-            </div>
-            
-            <div class="result-card">
-                <h3>🏢 Frais d'agence immobilière</h3>
-                <div class="result-value">${this.formatPrice(results.fraisAgenceImmo.min)} - ${this.formatPrice(results.fraisAgenceImmo.max)}</div>
-                <div class="result-range">4% - 10% du prix d'achat</div>
-            </div>
-            
-            <div class="result-card">
-                <h3>🔨 Travaux estimés</h3>
-                <div class="result-value">${this.formatPrice(results.travaux)}</div>
-                <div class="result-range">${results.surface}m² × ${this.coutTravaux[data.typeRenovation]}€/m²</div>
-            </div>
-            
-            <div class="result-card">
-                <h3>💰 Coût total HT</h3>
-                <div class="result-value">${this.formatPrice(results.coutHT.min)} - ${this.formatPrice(results.coutHT.max)}</div>
-                <div class="result-range">Prix + Notaire + Honoraires + Agence</div>
-            </div>
-            
-            <div class="result-card">
-                <h3>💯 Coût total TTC</h3>
-                <div class="result-value">${this.formatPrice(results.coutTTC.min)} - ${this.formatPrice(results.coutTTC.max)}</div>
-                <div class="result-range">Avec travaux inclus</div>
-            </div>
-            
-            <div class="result-card">
-                <h3>🏠 Loyer mensuel estimé</h3>
-                <div class="result-value">${this.formatPrice(results.loyerMensuel.min)} - ${this.formatPrice(results.loyerMensuel.max)}</div>
-                <div class="result-range">Fourchette marché ${results.ville}</div>
-            </div>
-            
-            <div class="result-card">
-                <h3>💼 Budget net vendeur</h3>
-                <div class="result-value">${this.formatPrice(results.budgetNetVendeur)}</div>
-                <div class="result-range">Budget disponible achat</div>
-            </div>
-            
-            <div class="result-card">
-                <h3>📈 Rentabilité brute HT</h3>
-                <div class="result-value ${this.getRentabilityClass(results.rentabiliteHT.min)}">${results.rentabiliteHT.min.toFixed(2)}% - ${results.rentabiliteHT.max.toFixed(2)}%</div>
-                <div class="result-range">Hors travaux</div>
-            </div>
-            
-            <div class="result-card">
-                <h3>📊 Rentabilité brute TTC</h3>
-                <div class="result-value ${this.getRentabilityClass(results.rentabiliteTTC.min)}">${results.rentabiliteTTC.min.toFixed(2)}% - ${results.rentabiliteTTC.max.toFixed(2)}%</div>
-                <div class="result-range">Avec travaux inclus</div>
-            </div>
-        `;
-        
-        // Stocker les données pour le benchmark
-        this.currentData = data;
-        this.currentResults = results;
-        
-        resultsContainer.style.display = 'block';
-        benchmarkBtn.style.display = 'block';
-        
-        // Scroll vers les résultats
-        resultsContainer.scrollIntoView({ behavior: 'smooth' });
-    }
-    
-     async getBenchmarkSequential(prompt1, prompt2, prompt3) {
-        console.log('🔄 Démarrage analyse séquentielle...');
+    // Méthode principale d'analyse
+    async analyser() {
+        console.log('🧮 Début analyse...');
         
         try {
-            // ÉTAPE 1
-            console.log('🔍 Appel API Étape 1...');
-            const result1 = await this.callPerplexityAPI(prompt1);
-            console.log('✅ Étape 1 terminée, attente 2 secondes...');
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Récupération et validation des données
+            const donnees = this.collecterDonnees();
+            if (!donnees) {
+                console.error('❌ Données invalides');
+                return;
+            }
             
-            // ÉTAPE 2
-            console.log('🏘️ Appel API Étape 2...');
-            const result2 = await this.callPerplexityAPI(prompt2);
-            console.log('✅ Étape 2 terminée, attente 2 secondes...');
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            console.log('📊 Données collectées:', donnees);
             
-            // ÉTAPE 3
-            console.log('🎯 Appel API Étape 3...');
-            const result3 = await this.callPerplexityAPI(prompt3);
-            console.log('✅ Étape 3 terminée');
+            // Affichage loading
+            this.afficherLoading();
             
-            console.log('✅ Toutes les étapes terminées avec succès');
-            return {
-                benchmark: result1,
-                analyse: result2,
-                selection: result3
-            };
+            // Calculs locaux
+            const calculs = this.calculerRendement(donnees);
+            console.log('💰 Calculs effectués:', calculs);
+            
+            // Génération et envoi du prompt à l'API
+            const prompt = this.genererPrompt(donnees, calculs);
+            console.log('📝 Prompt généré (longueur):', prompt.length);
+            
+            // Appel API Perplexity
+            const reponseIA = await this.callPerplexityAPI(prompt);
+            console.log('🤖 Réponse IA reçue (longueur):', reponseIA.length);
+            
+            // Affichage des résultats
+            this.afficherResultats(calculs, reponseIA);
+            
         } catch (error) {
             console.error('❌ Erreur lors de l\'analyse:', error);
-            throw error;
+            this.afficherErreur(error.message);
         }
     }
+    
+    // Collecte des données du formulaire
+    collecterDonnees() {
+        const form = document.getElementById('calculForm');
+        if (!form) {
+            throw new Error('Formulaire non trouvé');
+        }
         
-        loading.style.display = 'none';
+        const formData = new FormData(form);
+        const donnees = {
+            ville: formData.get('ville')?.trim() || '',
+            budget: parseInt(formData.get('budget')) || 0,
+            typeLogement: formData.get('typeLogement') || '',
+            typeBien: formData.get('typeBien') || 'ancien',
+            travaux: formData.get('travaux') || 'aucun'
+        };
+        
+        // Validation
+        if (!donnees.ville || donnees.budget <= 0 || !donnees.typeLogement) {
+            throw new Error('Veuillez remplir tous les champs obligatoires');
+        }
+        
+        if (donnees.budget < 50000 || donnees.budget > 2000000) {
+            throw new Error('Budget doit être entre 50 000€ et 2 000 000€');
+        }
+        
+        return donnees;
     }
     
-    createPrompt1() {
-        return `Agis comme un **chasseur immobilier expert**.  
-Ta mission est de proposer uniquement des **tableaux comparatifs d'annonces immobilières** correspondant au profil client.  
-⚠️ Tu dois fournir UNIQUEMENT des tableaux, sans aucun texte explicatif.  
-
-### DONNÉES CLIENT ###
-- Budget global: ${this.formatPrice(this.currentData.budgetClient)} (incluant prix, notaire ${this.currentData.typeBien === 'ancien' ? '7,5%' : '2,5%'}, honoraires 8,4%, frais d'agence 4-10%).  
-- Budget travaux additionnel: ${this.formatPrice(this.currentData.budgetTravaux)}
-- Ville: ${this.currentData.ville}
-- Typologie souhaitée: ${this.currentData.typologie}
-- Objectif: ${this.currentData.projet}
-
-### MÉTHODE ###
-1. Convertis le budget global en **budget net vendeur maximum**: ${this.formatPrice(this.currentResults.budgetNetVendeur)}
-2. Recherche **3 annonces représentatives par secteur** (bas, médian, haut).  
-   - Inclure surface, prix affiché, lien annonce.  
-   - Inclure estimation loyers 2025 (fourchette basse/haute) basée sur loyers au m² + annonces locatives réelles.  
-   - Calculer la rentabilité brute (fourchette basse/haute).  
-3. Si plusieurs secteurs sont pertinents, produire **plusieurs tableaux distincts** (1 tableau par secteur).  
-
-### FORMAT ATTENDU ###
-- Tableaux uniquement, sans aucun texte explicatif.  
-
-| Niveau budget | Localisation (secteur) | Type | Surface | Prix affiché (€) | Lien annonce | Loyer estimé 2025 (fourchette €/mois) | Rendement brut estimé (%) |
-
-⚠️ Important :
-- Toujours donner **3 annonces par secteur** (bas, médian, haut).  
-- Fournir **plusieurs tableaux si plusieurs secteurs**.  
-- Indiquer les loyers sous forme de fourchette (basse/haute).  
-- Indiquer la rentabilité brute sous forme de fourchette.`;
+    // Calculs de rendement
+    calculerRendement(donnees) {
+        const surface = this.surfaces[donnees.typeLogement] || 50;
+        const fraisNotaire = donnees.budget * this.tauxNotaire[donnees.typeBien];
+        
+        let coutTravauxTotal = 0;
+        if (donnees.travaux !== 'aucun') {
+            coutTravauxTotal = surface * this.coutTravaux[donnees.travaux];
+        }
+        
+        const investissementTotal = donnees.budget + fraisNotaire + coutTravauxTotal;
+        const loyerEstime = this.estimerLoyer(donnees.ville, donnees.typeLogement, surface);
+        const rendementBrut = ((loyerEstime * 12) / investissementTotal) * 100;
+        
+        return {
+            surface,
+            fraisNotaire: Math.round(fraisNotaire),
+            coutTravaux: Math.round(coutTravauxTotal),
+            investissementTotal: Math.round(investissementTotal),
+            loyerEstime: Math.round(loyerEstime),
+            rendementBrut: Math.round(rendementBrut * 100) / 100
+        };
     }
     
-    createPrompt2() {
-        return `Agis comme un **expert en investissement immobilier**.  
-Ta mission est d'analyser une **ville et ses quartiers** en fonction du **budget du client** et de son **projet**.  
-⚠️ Fournis UNIQUEMENT des tableaux, sans aucun texte explicatif.
-
-### DONNÉES CLIENT ###
-- Ville: ${this.currentData.ville}
-- Budget global: ${this.formatPrice(this.currentData.budgetClient)} (incluant frais de notaire ${this.currentData.typeBien === 'ancien' ? '7,5%' : '2,5%'} + honoraires 8,4% + frais d'agence 4-10%)
-- Budget net vendeur: ${this.formatPrice(this.currentResults.budgetNetVendeur)}
-- Projet: ${this.currentData.projet}
-- Typologie: ${this.currentData.typologie}
-
-### MÉTHODE ###
-1. Identifier les **quartiers principaux de ${this.currentData.ville}**.  
-2. Pour chaque quartier, indiquer :  
-   - Prix d'achat moyen (basse/haute, basé sur annonces actuelles 2025)  
-   - Loyer mensuel moyen estimé (basse/haute, 2025)  
-   - Rendement brut (%) calculé à partir du budget global et des loyers.  
-3. Adapter les résultats selon l'objectif **${this.currentData.projet}**.
-
-### FORMAT ATTENDU ###
-Un tableau unique au format suivant :  
-
-| Quartier | Prix d'achat (basse/haute) | Loyer estimé mensuel (basse/haute) | Rendement brut (%) (basse/haute) | Pertinence (${this.currentData.projet}) |
-
-⚠️ Contraintes :  
-- Toujours donner des fourchettes (prix, loyers, rendement).  
-- Basé uniquement sur données et annonces récentes (2025).  
-- Résultat = TABLEAU UNIQUEMENT, aucun texte commentaire.`;
+    // Estimation loyer basique
+    estimerLoyer(ville, type, surface) {
+        const tauxBase = {
+            'paris': 35,
+            'lyon': 18,
+            'marseille': 15,
+            'toulouse': 16,
+            'nice': 20,
+            'nantes': 16,
+            'bordeaux': 17,
+            'lille': 14
+        };
+        
+        const taux = tauxBase[ville.toLowerCase()] || 12;
+        return surface * taux;
     }
     
-    createPrompt3() {
-        return `Agis comme un **chasseur immobilier expert**.  
-Ta mission est de trouver les **3 meilleures annonces immobilières récentes** correspondant au budget donné par le client.  
-⚠️ Fournis UNIQUEMENT un tableau, sans aucun texte ni commentaire.
+    // Génération du prompt pour l'IA
+    genererPrompt(donnees, calculs) {
+        return `Tu es un expert en investissement immobilier français. Analyse cette opportunité et réponds UNIQUEMENT avec des tableaux markdown précis.
 
-### DONNÉES CLIENT ###
-- Ville: ${this.currentData.ville}
-- Budget global: ${this.formatPrice(this.currentData.budgetClient)} (incluant prix, notaire ${this.currentData.typeBien === 'ancien' ? '7,5%' : '2,5%'}, honoraires 8,4%, frais d'agence 4-10%)
-- Budget net vendeur maximum: ${this.formatPrice(this.currentResults.budgetNetVendeur)}
-- Typologie souhaitée: ${this.currentData.typologie}
-- Objectif: ${this.currentData.projet}
+**DONNÉES D'INVESTISSEMENT:**
+- Ville: ${donnees.ville}
+- Budget: ${donnees.budget.toLocaleString()}€
+- Type: ${donnees.typeLogement} (${calculs.surface}m²)
+- Bien: ${donnees.typeBien}
+- Travaux: ${donnees.travaux}
+- Investissement total: ${calculs.investissementTotal.toLocaleString()}€
+- Loyer estimé: ${calculs.loyerEstime}€/mois
+- Rendement brut: ${calculs.rendementBrut}%
 
-### MÉTHODE ###
-1. Sélectionner **3 annonces représentatives** dans le budget net vendeur :  
-   - Bas du budget (≈ ${this.formatPrice(this.currentResults.budgetNetVendeur * 0.7)})
-   - Médian du budget (≈ ${this.formatPrice(this.currentResults.budgetNetVendeur * 0.85)})
-   - Haut du budget (≈ ${this.formatPrice(this.currentResults.budgetNetVendeur)})
-2. Inclure seulement les **informations essentielles**.
+**DEMANDE PRÉCISE:**
+Crée 3 tableaux markdown distincts:
 
-### FORMAT ATTENDU ###
-Un tableau unique au format suivant :  
+1. **Analyse de quartiers** (Format: | Quartier | Prix moyen €/m² | Loyer moyen €/m² | Rendement estimé | Note investissement |)
 
-| Niveau budget | Localisation | Type | Surface | Prix affiché (€) | Loyer estimé 2025 (€) | Rendement brut estimé (%) | Lien annonce |
+2. **3 meilleures annonces actuelles** (Format: | Rang | Adresse | Prix | Surface | Loyer potentiel | Rendement | Lien |)
 
-⚠️ Contraintes :  
-- 3 lignes exactement (bas, moyen, haut).  
-- Les loyers doivent être cohérents avec le marché locatif 2025.  
-- Inclure le **lien direct** vers l'annonce.  
-- Résultat = UNIQUEMENT le tableau, pas de texte additionnel.`;
+3. **Synthèse recommandations** (Format: | Critère | Évaluation | Recommandation |)
+
+Utilise des données réelles du marché ${new Date().getFullYear()} pour ${donnees.ville}. Sois précis et factuel.`;
     }
     
+    // Appel API Perplexity
     async callPerplexityAPI(prompt) {
-    console.log('📡 Appel API Perplexity via serveur...');
-    console.log('📋 Prompt reçu (type):', typeof prompt);
-    console.log('📋 Prompt reçu (longueur):', prompt?.length || 'undefined');
-    console.log('📋 Prompt préview:', prompt?.substring(0, 100) || 'VIDE');
-    
-    // Validation du prompt
-    if (!prompt || typeof prompt !== 'string' || prompt.trim() === '') {
-        console.error('❌ Prompt invalide:', { prompt, type: typeof prompt });
-        throw new Error('Prompt requis et non vide');
-    }
-
-    try {
+        console.log('📡 Appel API Perplexity...');
+        
+        if (!prompt || typeof prompt !== 'string' || prompt.trim() === '') {
+            throw new Error('Prompt invalide ou vide');
+        }
+        
         const payload = {
             model: 'sonar-deep-research',
             messages: [
@@ -408,106 +190,170 @@ Un tableau unique au format suivant :
                 }
             ],
             temperature: 0.7,
-            max_tokens: 8000
+            max_tokens: 4000
         };
-
-        console.log('📤 Payload complet à envoyer:', JSON.stringify(payload, null, 2));
-
-        const response = await fetch('/api/perplexity', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
-
-        console.log('📨 Statut HTTP serveur:', response.status);
-        console.log('📨 Headers réponse:', [...response.headers.entries()]);
         
-        // Vérifier si la réponse est du JSON valide
-        const textResponse = await response.text();
-        console.log('📨 Réponse brute serveur:', textResponse);
+        console.log('📦 Payload préparé:', JSON.stringify(payload, null, 2));
         
-        let data;
         try {
-            data = JSON.parse(textResponse);
-        } catch (parseError) {
-            console.error('❌ Erreur parsing JSON:', parseError);
-            throw new Error(`Réponse serveur non-JSON: ${textResponse.substring(0, 200)}`);
-        }
-        
-        console.log('📋 Données parsées:', data);
-        
-        // Gestion des réponses
-        if (data.fallback || !data.success) {
-            console.warn('⚠️ Mode fallback activé:', data.error);
-            return data.content || 'Données indisponibles temporairement';
-        }
-        
-        if (!data.content) {
-            console.error('❌ Pas de contenu dans la réponse:', data);
-            throw new Error('Réponse serveur sans contenu');
-        }
-
-        console.log('✅ Contenu reçu (longueur):', data.content.length);
-        return data.content;
-        
-    } catch (error) {
-        console.error('❌ Erreur complète:', {
-            message: error.message,
-            stack: error.stack,
-            name: error.name
-        });
-        throw new Error(`Erreur API: ${error.message}`);
-    }
-}
-
-    
-    formatBenchmarkResponse(content) {
-        const lines = content.split('\n').filter(line => line.trim());
-        const tableLines = lines.filter(line => line.includes('|'));
-        
-        if (tableLines.length === 0) {
-            return `<div class="benchmark-text">${content.replace(/\n/g, '<br>')}</div>`;
-        }
-        
-        let html = '<table class="benchmark-table">';
-        
-        tableLines.forEach((line, index) => {
-            if (index === 1 && line.includes('---')) return; // Ignorer la ligne de séparation markdown
-            
-            const cells = line.split('|').filter(cell => cell.trim()).map(cell => cell.trim());
-            const tag = index === 0 ? 'th' : 'td';
-            
-            html += '<tr>';
-            cells.forEach(cell => {
-                // Transformer les liens markdown en liens HTML
-                const processedCell = cell.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-                html += `<${tag}>${processedCell}</${tag}>`;
+            const response = await fetch('/api/perplexity', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(payload)
             });
-            html += '</tr>';
-        });
+            
+            console.log('📡 Statut réponse:', response.status, response.statusText);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('❌ Erreur HTTP:', response.status, errorText);
+                throw new Error(`Erreur serveur (${response.status}): ${errorText}`);
+            }
+            
+            const data = await response.json();
+            console.log('📨 Réponse reçue:', data);
+            
+            if (data.success === true && data.content) {
+                console.log('✅ Contenu API récupéré');
+                return data.content;
+            }
+            
+            throw new Error(data.error || 'Réponse API invalide');
+            
+        } catch (error) {
+            console.error('❌ Erreur appel API:', error);
+            throw new Error(`API indisponible: ${error.message}`);
+        }
+    }
+    
+    // Affichage loading
+    afficherLoading() {
+        const resultatsDiv = document.getElementById('resultats');
+        if (resultatsDiv) {
+            resultatsDiv.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>🤖 Analyse en cours avec l'IA...</p>
+                    <small>Recherche des meilleures opportunités</small>
+                </div>
+            `;
+            resultatsDiv.style.display = 'block';
+        }
+    }
+    
+    // Affichage des résultats
+    afficherResultats(calculs, reponseIA) {
+        const resultatsDiv = document.getElementById('resultats');
+        if (!resultatsDiv) return;
         
-        html += '</table>';
-        return html;
+        const html = `
+            <div class="resultats-container">
+                <h2>📊 Résultats d'Analyse</h2>
+                
+                <div class="calculs-rapides">
+                    <div class="metric">
+                        <span class="label">💰 Investissement total</span>
+                        <span class="value">${calculs.investissementTotal.toLocaleString()}€</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">🏠 Loyer estimé</span>
+                        <span class="value">${calculs.loyerEstime}€/mois</span>
+                    </div>
+                    <div class="metric">
+                        <span class="label">📈 Rendement brut</span>
+                        <span class="value ${calculs.rendementBrut >= 5 ? 'bon' : calculs.rendementBrut >= 3 ? 'moyen' : 'faible'}">${calculs.rendementBrut}%</span>
+                    </div>
+                </div>
+                
+                <div class="analyse-ia">
+                    <h3>🤖 Analyse IA Perplexity</h3>
+                    <div class="contenu-ia">
+                        ${this.formaterReponseIA(reponseIA)}
+                    </div>
+                </div>
+                
+                <div class="actions">
+                    <button onclick="window.print()" class="btn-print">🖨️ Imprimer</button>
+                    <button onclick="this.nouvelleAnalyse()" class="btn-nouveau">🔄 Nouvelle analyse</button>
+                </div>
+            </div>
+        `;
+        
+        resultatsDiv.innerHTML = html;
+        resultatsDiv.style.display = 'block';
+        resultatsDiv.scrollIntoView({ behavior: 'smooth' });
     }
     
-    formatPrice(price) {
-        return new Intl.NumberFormat('fr-FR', {
-            style: 'currency',
-            currency: 'EUR',
-            maximumFractionDigits: 0
-        }).format(price);
+    // Formatage de la réponse IA
+    formaterReponseIA(texte) {
+        if (!texte || typeof texte !== 'string') {
+            return '<p class="erreur">Réponse IA non disponible</p>';
+        }
+        
+        // Conversion markdown vers HTML basique
+        let html = texte
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/\n/g, '<br>');
+            
+        // Amélioration des tableaux
+        html = html.replace(/\|/g, '</td><td>').replace(/<td>/g, '<td>', 1);
+        
+        return `<div class="reponse-formatee">${html}</div>`;
     }
     
-    getRentabilityClass(rate) {
-        return rate >= 4 ? 'rentability-positive' : 'rentability-negative';
+    // Affichage erreur
+    afficherErreur(message) {
+        const resultatsDiv = document.getElementById('resultats');
+        if (resultatsDiv) {
+            resultatsDiv.innerHTML = `
+                <div class="erreur-container">
+                    <h3>❌ Erreur</h3>
+                    <p>${message}</p>
+                    <button onclick="location.reload()" class="btn-retry">🔄 Réessayer</button>
+                </div>
+            `;
+            resultatsDiv.style.display = 'block';
+        }
+    }
+    
+    // Nouvelle analyse
+    nouvelleAnalyse() {
+        const resultatsDiv = document.getElementById('resultats');
+        if (resultatsDiv) {
+            resultatsDiv.style.display = 'none';
+            resultatsDiv.innerHTML = '';
+        }
+        
+        const form = document.getElementById('calculForm');
+        if (form) {
+            form.reset();
+        }
+        
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 }
 
-// Initialisation
+// Initialisation au chargement de la page
 document.addEventListener('DOMContentLoaded', () => {
-    new CalculatriceImmobiliere();
+    console.log('🌐 DOM chargé, initialisation...');
+    
+    try {
+        window.calculatrice = new CalculatriceImmobiliere();
+        console.log('✅ Application initialisée avec succès');
+    } catch (error) {
+        console.error('❌ Erreur initialisation:', error);
+    }
 });
 
+// Gestion erreurs globales
+window.addEventListener('error', (event) => {
+    console.error('❌ Erreur JavaScript:', event.error);
+});
 
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('❌ Promise rejetée:', event.reason);
+});
