@@ -12,232 +12,240 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.static('public'));
 
 // Configuration API Perplexity
-const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY || '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';
+const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY;
 const PERPLEXITY_API_URL = 'https://api.perplexity.ai/chat/completions';
 
 console.log('🔧 Configuration serveur:');
 console.log(`   PORT: ${PORT}`);
 console.log(`   API Key configurée: ${PERPLEXITY_API_KEY ? '✅' : '❌'}`);
+console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
 
 // Route principale
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/public/index.html');
 });
 
+// Route API Perplexity
 app.post('/api/perplexity', async (req, res) => {
-    const startTime = Date.now();
-    console.log(`📡 [${new Date().toISOString()}] Route appelée`);
+    console.log('📡 Route /api/perplexity appelée');
+    console.log('📦 Body reçu:', JSON.stringify(req.body, null, 2));
     
     try {
-        const { messages } = req.body;
+        const { model, messages, temperature, max_tokens } = req.body;
         
-        if (!messages || !Array.isArray(messages) || messages.length < 2) {
-            console.log('❌ Messages invalides:', messages);
+        // Validation stricte du payload
+        if (!messages || !Array.isArray(messages) || messages.length === 0) {
+            console.error('❌ Messages manquants ou invalides');
             return res.status(400).json({
                 success: false,
-                error: 'Messages array requis avec au moins 2 éléments'
+                error: 'Messages requis dans le format [{role: "user", content: "..."}]'
             });
         }
 
-        const userMessage = messages.find(m => m.role === 'user');
-        if (!userMessage || !userMessage.content) {
-            console.log('❌ Message utilisateur manquant');
+        // Extraire le prompt du message utilisateur
+        const userMessage = messages.find(msg => msg.role === 'user');
+        if (!userMessage || !userMessage.content || userMessage.content.trim() === '') {
+            console.error('❌ Contenu utilisateur manquant');
             return res.status(400).json({
                 success: false,
-                error: 'Message utilisateur requis'
+                error: 'Contenu utilisateur requis dans messages'
             });
         }
 
-        console.log('📝 Prompt longueur:', userMessage.content.length);
-        
-        // Appel API Perplexity avec retry
-        let retryCount = 0;
-        let lastError;
-        
-        while (retryCount < 3) {
-            try {
-                const response = await fetch('https://api.perplexity.ai/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model: 'sonar-pro',
-                        messages: messages,
-                        temperature: 0.7,
-                        max_tokens: 4000
-                    })
-                });
+        const prompt = userMessage.content.trim();
+        console.log('✅ Prompt extrait:', prompt.substring(0, 100) + '...');
 
-                if (!response.ok) {
-                    throw new Error(`API Error: ${response.status} ${response.statusText}`);
-                }
-
-                const data = await response.json();
-                const duration = Date.now() - startTime;
-                
-                console.log(`✅ Succès en ${duration}ms`);
-                return res.json({
-                    success: true,
-                    content: data.choices[0].message.content
-                });
-
-            } catch (error) {
-                retryCount++;
-                lastError = error;
-                console.log(`⚠️ Tentative ${retryCount}/3 échouée:`, error.message);
-                
-                if (retryCount < 3) {
-                    await new Promise(resolve => setTimeout(resolve, 1000)); // Attente 1s
-                }
-            }
-        }
-
-        throw lastError;
-
-    } catch (error) {
-        const duration = Date.now() - startTime;
-        console.error(`❌ Erreur finale après ${duration}ms:`, error);
-        
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-        // Mode fallback direct si API non configurée
-        if (!PERPLEXITY_API_KEY || PERPLEXITY_API_KEY.length < 20) {
-            console.warn('⚠️ API Key insuffisante, mode fallback direct');
-            return res.json({
+        // Vérification stricte clé API
+        if (!PERPLEXITY_API_KEY || PERPLEXITY_API_KEY === 'your_key_here' || PERPLEXITY_API_KEY.length < 20) {
+            console.warn('⚠️ Clé API invalide ou manquante');
+            return res.status(500).json({
                 success: false,
-                fallback: true,
-                error: 'Mode hors ligne',
-                content: getFallbackContent(prompt)
+                error: 'Clé API Perplexity non configurée ou invalide'
             });
         }
 
         // Appel API Perplexity
-        console.log('🚀 Tentative appel API Perplexity...');
+        console.log('🚀 Appel API Perplexity...');
+        const apiPayload = {
+            model: model || 'llama-3.1-sonar-large-128k-online',
+            messages: messages,
+            temperature: temperature || 0.7,
+            max_tokens: max_tokens || 8000,
+            stream: false
+        };
+
+        console.log('📤 Payload API:', JSON.stringify(apiPayload, null, 2));
+
         const response = await fetch(PERPLEXITY_API_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
+                'Content-Type': 'application/json',
+                'User-Agent': 'CalculatriceImmobiliere/1.0'
+            },
+            body: JSON.stringify(apiPayload),
+            timeout: 30000 // 30 secondes
+        });
+
+        console.log('📨 Statut API:', response.status);
+        console.log('📨 Headers API:', Object.fromEntries(response.headers.entries()));
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Erreur API Perplexity:', response.status, errorText);
+            
+            if (response.status === 401) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Clé API Perplexity invalide'
+                });
+            }
+            
+            if (response.status === 429) {
+                return res.status(429).json({
+                    success: false,
+                    error: 'Limite d\'utilisation API atteinte'
+                });
+            }
+            
+            throw new Error(`API Error ${response.status}: ${errorText}`);
+        }
+
+        const data = await response.json();
+        console.log('✅ Réponse API reçue:', JSON.stringify(data, null, 2));
+
+        // Validation de la réponse
+        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+            console.error('❌ Structure réponse API invalide:', data);
+            throw new Error('Réponse API invalide - structure inattendue');
+        }
+
+        const content = data.choices[0].message.content;
+        if (!content || content.trim() === '') {
+            throw new Error('Contenu vide reçu de l\'API');
+        }
+
+        console.log('✅ Contenu validé, longueur:', content.length);
+
+        res.json({
+            success: true,
+            content: content,
+            usage: data.usage,
+            model_used: data.model,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('❌ Erreur complète API Perplexity:', error);
+        
+        // Retourner une erreur explicite sans fallback
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            timestamp: new Date().toISOString(),
+            details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+    }
+});
+
+// Route de test API
+app.get('/api/test', async (req, res) => {
+    try {
+        if (!PERPLEXITY_API_KEY) {
+            return res.json({
+                status: 'ERROR',
+                message: 'Clé API manquante',
+                api_configured: false
+            });
+        }
+
+        console.log('🧪 Test API Perplexity...');
+        const testResponse = await fetch(PERPLEXITY_API_URL, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                model: model || 'sonar-deep-research',
-                messages: messages,
-                temperature: temperature || 0.7,
-                max_tokens: max_tokens || 8000
+                model: 'llama-3.1-sonar-large-128k-online',
+                messages: [
+                    {
+                        role: 'user',
+                        content: 'Réponds simplement "API fonctionnelle" pour tester la connexion.'
+                    }
+                ],
+                max_tokens: 10
             })
         });
 
-        if (!response.ok) {
-            console.log(`❌ API Error ${response.status}, fallback activé`);
-            return res.json({
-                success: false,
-                fallback: true,
-                error: `API Error ${response.status}`,
-                content: getFallbackContent(prompt)
-            });
-        }
-
-        const data = await response.json();
-        console.log('✅ Réponse API reçue avec succès');
-
-        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-            console.log('❌ Réponse API malformée, fallback activé');
-            return res.json({
-                success: false,
-                fallback: true,
-                error: 'Réponse API invalide',
-                content: getFallbackContent(prompt)
-            });
-        }
-
-        // Succès !
+        const testData = await testResponse.json();
+        
         res.json({
-            success: true,
-            content: data.choices[0].message.content,
-            usage: data.usage
+            status: testResponse.ok ? 'OK' : 'ERROR',
+            api_configured: true,
+            api_status: testResponse.status,
+            response: testResponse.ok ? testData.choices?.[0]?.message?.content : testData,
+            timestamp: new Date().toISOString()
         });
 
     } catch (error) {
-        console.error('❌ Erreur serveur complète:', error.message);
-        
-        // Toujours renvoyer du fallback en cas d'erreur
-        const userMessage = req.body.messages?.find(msg => msg.role === 'user');
-        const prompt = userMessage?.content || '';
-        
         res.json({
-            success: false,
-            fallback: true,
-            error: error.message,
-            content: getFallbackContent(prompt)
+            status: 'ERROR',
+            message: error.message,
+            api_configured: !!PERPLEXITY_API_KEY,
+            timestamp: new Date().toISOString()
         });
     }
 });
-
-// Fonction fallback robuste
-function getFallbackContent(prompt) {
-    console.log('🎭 Génération contenu fallback...');
-    
-    if (prompt.includes('chasseur immobilier') || prompt.includes('Étape 1')) {
-        return `| Niveau budget | Localisation (secteur) | Type | Surface | Prix affiché (€) | Lien annonce | Loyer estimé 2025 (€/mois) | Rendement brut (%) |
-|---------------|------------------------|------|---------|------------------|--------------|----------------------------|-------------------|
-| 🥉 Bas | Nantes Malakoff | T2 | 42m² | 180 000€ | [Voir SeLoger](#) | 1000-1200 | 6.7-8.0% |
-| 🥈 Médian | Nantes Procé | T2 | 45m² | 190 000€ | [Voir LeBonCoin](#) | 1100-1300 | 6.9-8.2% |
-| 🥇 Haut | Nantes Centre | T2 | 48m² | 200 000€ | [Voir PAP](#) | 1200-1400 | 7.2-8.4% |
-
-*Mode démonstration - Reconnectez-vous pour données temps réel*`;
-    }
-    
-    if (prompt.includes('quartiers') || prompt.includes('Étape 2')) {
-        return `| Quartier | Prix d'achat (€) | Loyer estimé mensuel (€) | Rendement brut (%) | Pertinence (patrimoine) |
-|----------|------------------|--------------------------|--------------------|-----------------------|
-| Malakoff | 170000-190000 | 950-1150 | 6.0-8.1% | ⭐⭐⭐⭐ |
-| Procé | 180000-200000 | 1050-1250 | 6.3-8.3% | ⭐⭐⭐⭐⭐ |
-| Centre-ville | 190000-210000 | 1150-1350 | 6.5-8.5% | ⭐⭐⭐⭐⭐ |
-| Bottière | 160000-180000 | 900-1100 | 6.1-8.3% | ⭐⭐⭐ |
-
-*Mode hors ligne - Reconnectez-vous pour analyse complète*`;
-    }
-    
-    if (prompt.includes('3 meilleures') || prompt.includes('Étape 3')) {
-        return `| Niveau budget | Localisation | Type | Surface | Prix affiché (€) | Loyer estimé 2025 (€) | Rendement brut (%) | Lien annonce |
-|---------------|--------------|------|---------|------------------|----------------------|--------------------|--------------|
-| 🥉 Bas | Nantes Malakoff | T2 | 41m² | 175000€ | 1050-1200 | 7.2-8.2% | [Détails](#) |
-| 🥈 Médian | Nantes Procé | T2 | 44m² | 185000€ | 1150-1300 | 7.4-8.4% | [Détails](#) |
-| 🥇 Haut | Nantes Centre | T2 | 47m² | 195000€ | 1250-1400 | 7.7-8.6% | [Détails](#) |
-
-*Sélection mode hors ligne - Reconnectez-vous pour annonces temps réel*`;
-    }
-    
-    return `| Information | Valeur |
-|-------------|---------|
-| Mode | Hors ligne activé |
-| Recommandation | Vérifiez votre connexion |
-
-**✅ Données calculées localement**`;
-}
 
 // Health check
 app.get('/health', (req, res) => {
     res.json({ 
         status: 'OK', 
         timestamp: new Date().toISOString(),
-        api_configured: !!PERPLEXITY_API_KEY
+        api_configured: !!PERPLEXITY_API_KEY,
+        environment: process.env.NODE_ENV || 'development'
     });
 });
 
-// Démarrage serveur
-app.listen(PORT, () => {
-    console.log(`🚀 Serveur démarré sur le port ${PORT}`);
-    console.log(`📱 URL: http://localhost:${PORT}`);
-    console.log(`🌐 Production: https://votre-app.onrender.com`);
+// Route 404
+app.use('*', (req, res) => {
+    res.status(404).json({
+        error: 'Route non trouvée',
+        path: req.originalUrl,
+        timestamp: new Date().toISOString()
+    });
 });
 
-"Fix: Correction route API Perplexity"
+// Gestion erreurs globales
+app.use((error, req, res, next) => {
+    console.error('❌ Erreur serveur:', error);
+    res.status(500).json({
+        success: false,
+        error: 'Erreur serveur interne',
+        timestamp: new Date().toISOString()
+    });
+});
 
+// Démarrage serveur avec gestion erreurs
+const server = app.listen(PORT, () => {
+    console.log(`🚀 Serveur démarré sur le port ${PORT}`);
+    console.log(`📱 URL locale: http://localhost:${PORT}`);
+    console.log(`🌐 URL production: https://calculatrice-5pp8.onrender.com`);
+    console.log(`🧪 Test API: https://calculatrice-5pp8.onrender.com/api/test`);
+});
+
+server.on('error', (error) => {
+    console.error('❌ Erreur serveur:', error);
+});
+
+// Gestion arrêt propre
+process.on('SIGTERM', () => {
+    console.log('🔄 Arrêt serveur...');
+    server.close(() => {
+        console.log('✅ Serveur arrêté proprement');
+        process.exit(0);
+    });
+});
+
+module.exports = app;
